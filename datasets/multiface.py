@@ -135,65 +135,64 @@ class MultiFaceDataset(torch.utils.data.Dataset):
         self.cameras = []
         self.cams.remove('400008')
         self.cams.remove('400050')
-        for cam in self.cams:
-            path = "{}/{}/{}/{}.png".format(self.photopath, self.sentnum, cam, self.frame)
-            img = Image.open(path)
-            img = img.resize((img.size[0]//self.scale, img.size[1]//self.scale), Image.LANCZOS)
+        if self.split == 'train':
+            for cam in self.cams:
+                path = "{}/{}/{}/{}.png".format(self.photopath, self.sentnum, cam, self.frame)
+                img = Image.open(path)
+                img = img.resize((img.size[0]//self.scale, img.size[1]//self.scale), Image.LANCZOS)
 
-            w, h = img.size[0], img.size[1]
-            print('image size', w, h)
+                w, h = img.size[0], img.size[1]
+                print('image size', w, h)
 
-            img = self.transform(img)
-            img = img.view(3, -1).permute(1, 0)
+                img = self.transform(img)
+                img = img.view(3, -1).permute(1, 0)
 
-            intrin, extrin = get_intrin_extrin(self.base, cam, scale=self.scale)
-            c2w = get_c2w(extrin)
-            c2w = torch.FloatTensor(c2w)
-            #intrin[2,2] = -1
+                intrin, extrin = get_intrin_extrin(self.base, cam, scale=self.scale)
+                c2w = get_c2w(extrin)
+                c2w = torch.FloatTensor(c2w)
+                #intrin[2,2] = -1
 
-            #M = intrin @ extrin
-            directions = get_ray_directions_face(h, w, intrin[0,0], intrin[0,2], intrin[1,2])
-            rays_o, rays_d = get_rays(directions, c2w)
-            
-            near = -900
-            far = -1300
+                #M = intrin @ extrin
+                directions = get_ray_directions_face(h, w, intrin[0,0], intrin[0,2], intrin[1,2])
+                rays_o, rays_d = get_rays(directions, c2w)
+                
+                near = -900
+                far = -1300
 
-            print('ray_example', rays_o[0]+rays_d[0]*near)
-            print(cam)
+                print('ray_example', rays_o[0]+rays_d[0]*near)
+                print(cam)
 
-            self.all_rays += [torch.cat([rays_o, rays_d, 
-                                                near*torch.ones_like(rays_o[:, :1]),
-                                                far*torch.ones_like(rays_o[:, :1])],
-                                                1)]
-            self.all_rgbs += [img]
-            self.cameras += [cam]*rays_o.shape[0]
-        self.all_rays = torch.cat(self.all_rays, 0)
-        self.all_rgbs = torch.cat(self.all_rgbs, 0)
+                self.all_rays += [torch.cat([rays_o, rays_d, 
+                                                    near*torch.ones_like(rays_o[:, :1]),
+                                                    far*torch.ones_like(rays_o[:, :1])],
+                                                    1)]
+                self.all_rgbs += [img]
+                self.cameras += [cam]*rays_o.shape[0]
+            self.all_rays = torch.cat(self.all_rays, 0)
+            self.all_rgbs = torch.cat(self.all_rgbs, 0)
     
     def define_transforms(self):
         self.transform = T.ToTensor()
 
     def __len__(self):
-        return len(self.cameras)
+        if self.split == 'train':
+            return len(self.all_rays)
+        if self.split == 'val':
+            return 1
 
     def __getitem__(self, idx):
 
         if self.split == 'train':
             rays = self.all_rays[idx]
             img = self.all_rgbs[idx]
-            cam = self.cameras[idx]
 
-            intrin, extrin = get_intrin_extrin(self.base, cam, scale=self.scale)
-            c2w = get_c2w(extrin)
-            c2w = torch.FloatTensor(c2w)
 
             sample = {'rays': rays,
-                        'rgbs': img,
-                        'c2w': c2w}
+                        'rgbs': img}
             return sample
         
         else:
-            cam = self.cameras[idx]
+            cam = self.cams[idx]
             # image
             #print(self.photopath, self.sentnum, cam, self.frame)
             path = "{}/{}/{}/{}.png".format(self.photopath, self.sentnum, cam, self.frame)
